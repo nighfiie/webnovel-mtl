@@ -59,6 +59,19 @@ export function countWords(text: string | null | undefined): { words: number; ch
   return { words: cjk + latin, chars };
 }
 
+/** CJK text is measured in characters, English/Latin text in words. */
+export function textLength(text: string | null | undefined): { value: number; unit: "characters" | "words" } {
+  if (!text) return { value: 0, unit: "words" };
+  const cjk = (text.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/g) ?? []).length;
+  const latin = text.replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/g, " ").split(/\s+/).filter((w) => /\p{L}|\p{N}/u.test(w)).length;
+  return cjk > latin ? { value: cjk, unit: "characters" } : { value: latin, unit: "words" };
+}
+
+export function formatTextLength(text: string | null | undefined): string {
+  const { value, unit } = textLength(text);
+  return `${value.toLocaleString()} ${unit}`;
+}
+
 export const READER_FONTS = [
   { id: "lora", label: "Lora", css: "'Lora', serif" },
   { id: "merriweather", label: "Merriweather", css: "'Merriweather', serif" },

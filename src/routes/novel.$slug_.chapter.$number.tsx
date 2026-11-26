@@ -6,7 +6,7 @@ import { useIsAdmin } from "@/hooks/use-is-admin";
 import { chapterListOptions } from "@/lib/chapter-list";
 import { ReaderChapterNavigation } from "@/components/ChapterNavigation";
 import { Button } from "@/components/ui/button";
-import { READER_FONTS, DEFAULT_READER, parseReaderSettings, countWords, upsertProgress, PROGRESS_KEY, type ReaderSettings, type ProgressEntry } from "@/lib/catalog";
+import { READER_FONTS, DEFAULT_READER, parseReaderSettings, formatTextLength, upsertProgress, PROGRESS_KEY, type ReaderSettings, type ProgressEntry } from "@/lib/catalog";
 import { Comments } from "@/components/social/Comments";
 import { supabase } from "@/integrations/supabase/client";
 import { splitParagraphs, type ChapterRecord, type NovelRecord } from "@/lib/novels";
@@ -150,7 +150,7 @@ function ChapterReaderPage() {
 
   // If user chose translated but none exists yet, gracefully show notice + original fallback option
   const effectiveMode: DisplayMode = !isDual ? "translated" : displayMode;
-  const stats = countWords(effectiveMode === "original" ? chapter.content_original : chapter.content_translated || chapter.content_original);
+  const statsText = formatTextLength(effectiveMode === "original" ? chapter.content_original : chapter.content_translated || chapter.content_original);
   const fontCss = READER_FONTS.find((f) => f.id === settings.font)?.css ?? "serif";
   const downloadChapter = () => {
     const body = [chapter.title, "", chapter.content_translated ?? "", chapter.content_original ? "\n---\n\n" + chapter.content_original : ""].join("\n");
@@ -277,7 +277,7 @@ function ChapterReaderPage() {
         <div className="mb-8 border-b border-slate-800 pb-6 text-center">
           <p className="text-xs uppercase tracking-wider text-blue-400">Chapter {chapter.number}</p>
           <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">{chapter.title}</h1>
-          <p className="mt-2 text-xs text-slate-500">{stats.words.toLocaleString()} words · {stats.chars.toLocaleString()} characters</p>
+          <p className="mt-2 text-xs text-slate-500">{statsText}</p>
         </div>
 
         <article style={{ fontSize: `${fontSize}px`, lineHeight: settings.lineHeight, fontFamily: fontCss }}>

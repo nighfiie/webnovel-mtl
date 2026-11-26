@@ -151,6 +151,16 @@ function NovelDetailPage() {
               </div>
             )}
 
+            {(novel.tags ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {novel.tags.map((t) => (
+                  <Link key={t} to="/browse" search={{ tag: t } as never} className="rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs text-blue-300 hover:bg-blue-500/20">
+                    #{t}
+                  </Link>
+                ))}
+              </div>
+            )}
+
             {novel.synopsis && (
               <p className="whitespace-pre-line text-sm leading-relaxed text-slate-300">
                 {novel.synopsis}

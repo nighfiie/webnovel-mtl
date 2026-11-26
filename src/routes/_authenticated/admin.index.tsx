@@ -70,6 +70,7 @@ function AdminNovelsPage() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [novelPage, setNovelPage] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<NovelFormState>(EMPTY_FORM);
   const [tagDraft, setTagDraft] = useState("");
@@ -238,7 +239,11 @@ function AdminNovelsPage() {
       n.title.toLowerCase().includes(search.toLowerCase()) ||
       (n.original_title ?? "").toLowerCase().includes(search.toLowerCase()),
   );
-  const allSelected = filtered.length > 0 && filtered.every((n) => selectedIds.includes(n.id));
+  const NOVELS_PER_PAGE = 50;
+  const novelPages = Math.max(1, Math.ceil(filtered.length / NOVELS_PER_PAGE));
+  const curPage = Math.min(novelPage, novelPages - 1);
+  const visibleNovels = filtered.slice(curPage * NOVELS_PER_PAGE, (curPage + 1) * NOVELS_PER_PAGE);
+  const allSelected = visibleNovels.length > 0 && visibleNovels.every((n) => selectedIds.includes(n.id));
 
   return (
     <div className="min-h-screen bg-[#0c1017] text-slate-100">
@@ -284,7 +289,7 @@ function AdminNovelsPage() {
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => (setSearch(e.target.value), setNovelPage(0))}
             placeholder="Search novels by title..."
             className="max-w-xs bg-slate-900 border-slate-700 text-white"
           />
@@ -340,7 +345,7 @@ function AdminNovelsPage() {
                   <input
                     type="checkbox"
                     checked={allSelected}
-                    onChange={(e) => setSelectedIds(e.target.checked ? filtered.map((n) => n.id) : [])}
+                    onChange={(e) => setSelectedIds(e.target.checked ? visibleNovels.map((n) => n.id) : [])}
                   />
                 </th>
                 <th className="p-3">Novel</th>
@@ -356,7 +361,7 @@ function AdminNovelsPage() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={6} className="p-6 text-center text-slate-400">No novels found.</td></tr>
               ) : (
-                filtered.map((n) => (
+                visibleNovels.map((n) => (
                   <tr key={n.id} className="hover:bg-slate-900/40">
                     <td className="p-3">
                       <input
@@ -425,6 +430,13 @@ function AdminNovelsPage() {
             </tbody>
           </table>
         </div>
+        {novelPages > 1 && (
+          <div className="mt-3 flex items-center justify-end gap-2 text-xs text-slate-400">
+            <button type="button" disabled={curPage === 0} onClick={() => setNovelPage(curPage - 1)} className="rounded border border-slate-700 px-2 py-1 disabled:opacity-40">Prev</button>
+            <span>Page {curPage + 1} of {novelPages} · {filtered.length} novels</span>
+            <button type="button" disabled={curPage >= novelPages - 1} onClick={() => setNovelPage(curPage + 1)} className="rounded border border-slate-700 px-2 py-1 disabled:opacity-40">Next</button>
+          </div>
+        )}
       </main>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyCatalogFilters, cycleTriState, countWords, parseReaderSettings, upsertProgress } from "@/lib/catalog";
+import { applyCatalogFilters, cycleTriState, countWords, textLength, parseReaderSettings, upsertProgress } from "@/lib/catalog";
 
 const base = { original_title: null, original_author: null, tags: [], category: "", rating: 0 };
 const novels = [
@@ -30,6 +30,12 @@ describe("catalog filters", () => {
 describe("reader", () => {
   it("counts CJK chars as words", () => {
     expect(countWords("你好 world").words).toBe(3);
+  });
+  it("measures Chinese in characters", () => {
+    expect(textLength("沈天很郁闷。他穿越了")).toEqual({ value: 9, unit: "characters" });
+  });
+  it("measures English in words", () => {
+    expect(textLength("Shen Tian is very depressed .")).toEqual({ value: 5, unit: "words" });
   });
   it("clamps settings", () => {
     expect(parseReaderSettings('{"font":"nope","size":99}')).toEqual({ font: "lora", size: 32, lineHeight: 1.85 });

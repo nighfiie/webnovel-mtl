@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { formatTextLength } from "@/lib/catalog";
 import { cleanChapterText, type ChapterRecord, type NovelRecord } from "@/lib/novels";
 import { parseCsv } from "@/lib/migration-csv";
 import { fetchChapterContent, type ScraperEngine } from "@/lib/scraper.functions";
@@ -51,6 +52,7 @@ function AdminChaptersPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "translated" | "untranslated">("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [page, setPage] = useState(0);
 
   // Add Chapter Modal
   const [addOpen, setAddOpen] = useState(false);
@@ -394,7 +396,11 @@ function AdminChaptersPage() {
     return true;
   });
 
-  const allSelected = filtered.length > 0 && filtered.every((c) => selectedIds.includes(c.id));
+  const PAGE_SIZE = 100;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const allSelected = visible.length > 0 && visible.every((c) => selectedIds.includes(c.id));
 
   return (
     <div className="min-h-screen bg-[#0c1017] text-slate-100">
@@ -426,7 +432,7 @@ function AdminChaptersPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => (setSearch(e.target.value), setPage(0))}
               placeholder="Search chapter # or title..."
               className="w-56 bg-slate-900 border-slate-700 text-sm"
             />
@@ -447,7 +453,19 @@ function AdminChaptersPage() {
           </div>
 
           <div className="text-xs text-slate-400">
-            Showing {filtered.length} of {chapters.length} chapters
+            Showing {visible.length ? safePage * PAGE_SIZE + 1 : 0}–{safePage * PAGE_SIZE + visible.length} of {filtered.length} ({chapters.length} total)
+            {pageCount > 1 && (
+              <span className="ml-3 inline-flex items-center gap-1">
+                <button type="button" disabled={safePage === 0} onClick={() => setPage(safePage - 1)} className="rounded border border-slate-700 px-2 py-0.5 disabled:opacity-40">Prev</button>
+                <select aria-label="Chapter range" value={safePage} onChange={(e) => setPage(Number(e.target.value))} className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-white">
+                  {Array.from({ length: pageCount }, (_, i) => {
+                    const a = filtered[i * PAGE_SIZE]?.number; const b = filtered[Math.min(filtered.length, (i + 1) * PAGE_SIZE) - 1]?.number;
+                    return <option key={i} value={i}>Ch. {a}–{b}</option>;
+                  })}
+                </select>
+                <button type="button" disabled={safePage >= pageCount - 1} onClick={() => setPage(safePage + 1)} className="rounded border border-slate-700 px-2 py-0.5 disabled:opacity-40">Next</button>
+              </span>
+            )}
           </div>
         </div>
 
@@ -502,22 +520,23 @@ function AdminChaptersPage() {
                   <input
                     type="checkbox"
                     checked={allSelected}
-                    onChange={(e) => setSelectedIds(e.target.checked ? filtered.map((c) => c.id) : [])}
+                    onChange={(e) => setSelectedIds(e.target.checked ? [...new Set([...selectedIds, ...visible.map((c) => c.id)])] : selectedIds.filter((id) => !visible.some((c) => c.id === id)))}
                   />
                 </th>
                 <th className="p-3 w-20">#</th>
                 <th className="p-3">Title</th>
                 <th className="p-3">Translation</th>
+                <th className="p-3">Length</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
               {isLoading ? (
-                <tr><td colSpan={5} className="p-6 text-center text-slate-400">Loading chapters...</td></tr>
+                <tr><td colSpan={6} className="p-6 text-center text-slate-400">Loading chapters...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="p-6 text-center text-slate-400">No chapters found.</td></tr>
+                <tr><td colSpan={6} className="p-6 text-center text-slate-400">No chapters found.</td></tr>
               ) : (
-                filtered.map((ch) => (
+                visible.map((ch) => (
                   <tr key={ch.id} className="hover:bg-slate-900/40">
                     <td className="p-3">
                       <input
@@ -538,6 +557,11 @@ function AdminChaptersPage() {
                       ) : (
                         <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">Original only</span>
                       )}
+                    </td>
+                    <td className="p-3 text-xs tabular-nums text-slate-400">
+                      {ch.content_original && <div>Orig: {formatTextLength(ch.content_original)}</div>}
+                      {ch.content_translated && <div>Trans: {formatTextLength(ch.content_translated)}</div>}
+                      {!ch.content_original && !ch.content_translated && <span className="text-red-400">Empty</span>}
                     </td>
                     <td className="p-3 text-right">
                       <div className="inline-flex items-center gap-1.5">
