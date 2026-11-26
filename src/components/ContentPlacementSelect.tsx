@@ -1,0 +1,5 @@
+import type { ContentPlacement } from '@/lib/chapter-language';
+import { Label } from '@/components/ui/label';
+export function ContentPlacementSelect({ value, onChange, disabled = false }: { value: ContentPlacement; onChange: (value: ContentPlacement) => void; disabled?: boolean }) {
+  return <div className="space-y-1"><Label htmlFor="content-placement">Content placement</Label><select id="content-placement" value={value} disabled={disabled} onChange={e => onChange(e.target.value as ContentPlacement)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"><option value="auto">Auto-detect language</option><option value="original">Original text</option><option value="translated">Translated text</option><option value="mirror">Mirror into both</option></select></div>;
+}

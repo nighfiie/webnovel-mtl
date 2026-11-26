@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1795548787517,
+      "tag": "0000_create_novels_chapters_and_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795550072629,
+      "tag": "0001_user_library_social",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795550253294,
+      "tag": "0002_restrict_social_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795653353231,
+      "tag": "0003_reader_rating_aggregates",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795655013104,
+      "tag": "0004_apply_imported_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795655567549,
+      "tag": "0005_scope_social_reads",
+      "breakpoints": true
+    }
+  ]
+}

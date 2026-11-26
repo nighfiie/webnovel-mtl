@@ -1,0 +1,11 @@
+[
+{"capability":"code","source":"code archive","outcome":"migrate","status":"verified","next_action":null},
+{"capability":"schema","source":"drizzle migrations 0000-0003","outcome":"migrate","status":"verified","next_action":null},
+{"capability":"records","source":"previous Lovable Cloud database","outcome":"migrate","status":"pending","next_action":"User exports novels, chapters, reviews, comments, bookmarks as CSV"},
+{"capability":"auth identities","source":"previous Lovable Cloud auth","outcome":"migrate","status":"pending","next_action":"User exports users (id, email) and user_roles; admin role must be re-granted"},
+{"capability":"auth methods","source":"email/password, Google, Lovable","outcome":"migrate","status":"implemented","next_action":"Sign-in test by user"},
+{"capability":"authorization","source":"user_roles/has_role + RLS","outcome":"migrate","status":"verified","next_action":null},
+{"capability":"AI translation","source":"Lovable AI gateway","outcome":"preserve","status":"implemented","next_action":null},
+{"capability":"Firecrawl scraping","source":"FIRECRAWL_API_KEY or key entered in admin","outcome":"preserve","status":"implemented","next_action":"Optional secret"},
+{"capability":"verification","source":"-","outcome":"-","status":"partial","next_action":"Admin create/edit flow after an admin account exists"}
+]
