@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Remove chapter-list caps; add 100-chapter ranges, search/jump and order on novels, paired dropdowns on readers, and complete admin batch loading (59 tests pass; real reader flow verified using a temporary test account; admin UI verification unavailable without an admin session).
 - [x] Accept old-site CSV exports without novel slugs; verify both supplied files, chapter matching, duplicate-safe retries, and the signed-in dialog without importing sample records.
 - [x] Detect fetched/crawled chapter languages and preserve separate original/translated content.
 - [x] Add tags to the novel editor.

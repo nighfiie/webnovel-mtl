@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Columns2, Download, Languages, List, Minus, Plus, Type, Pencil } from "lucide-react";
 import { useIsAdmin } from "@/hooks/use-is-admin";
-import { useNavigate } from "@tanstack/react-router";
+import { chapterListOptions } from "@/lib/chapter-list";
+import { ReaderChapterNavigation } from "@/components/ChapterNavigation";
+import { Button } from "@/components/ui/button";
 import { READER_FONTS, DEFAULT_READER, parseReaderSettings, countWords, upsertProgress, PROGRESS_KEY, type ReaderSettings, type ProgressEntry } from "@/lib/catalog";
 import { Comments } from "@/components/social/Comments";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,7 +33,6 @@ function ChapterReaderPage() {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("translated");
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_READER);
   const [showSettings, setShowSettings] = useState(false);
-  const navigate = useNavigate();
   const isAdmin = useIsAdmin();
   useEffect(() => {
     try { setSettings(parseReaderSettings(localStorage.getItem("readnovel-reader"))); } catch { /* storage unavailable */ }
@@ -63,10 +64,11 @@ function ChapterReaderPage() {
     queryKey: ["chapter", novel?.id, chapterNum],
     enabled: Boolean(novel?.id) && Number.isFinite(chapterNum),
     queryFn: async () => {
+      if (!novel) return null;
       const { data, error } = await supabase
         .from("chapters")
         .select("*")
-        .eq("novel_id", novel!.id)
+        .eq("novel_id", novel.id)
         .eq("number", chapterNum)
         .maybeSingle();
       if (error) throw error;
@@ -78,11 +80,12 @@ function ChapterReaderPage() {
     queryKey: ["chapter-neighbors", novel?.id, chapterNum],
     enabled: Boolean(novel?.id) && Number.isFinite(chapterNum),
     queryFn: async () => {
+      if (!novel) return { prev: null, next: null };
       const [prevRes, nextRes] = await Promise.all([
         supabase
           .from("chapters")
           .select("number")
-          .eq("novel_id", novel!.id)
+          .eq("novel_id", novel.id)
           .lt("number", chapterNum)
           .order("number", { ascending: false })
           .limit(1)
@@ -90,7 +93,7 @@ function ChapterReaderPage() {
         supabase
           .from("chapters")
           .select("number")
-          .eq("novel_id", novel!.id)
+          .eq("novel_id", novel.id)
           .gt("number", chapterNum)
           .order("number", { ascending: true })
           .limit(1)
@@ -103,19 +106,7 @@ function ChapterReaderPage() {
     },
   });
 
-  const { data: chapterList } = useQuery({
-    queryKey: ["chapter-list", novel?.id],
-    enabled: Boolean(novel?.id),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("chapters")
-        .select("number,title")
-        .eq("novel_id", novel!.id)
-        .order("number", { ascending: true });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+  const { data: chapterList = [], isError: chapterListError, refetch: refetchChapterList } = useQuery(chapterListOptions(novel?.id ?? ""));
 
   useEffect(() => {
     if (!novel || !chapter) return;
@@ -186,7 +177,7 @@ function ChapterReaderPage() {
             </Link>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {isAdmin && chapter && (
               <Link
                 to="/admin/novels/$slug/chapters/$chapterId"
@@ -253,17 +244,8 @@ function ChapterReaderPage() {
             <button type="button" aria-label="Download chapter" onClick={downloadChapter} className="rounded-lg border border-slate-800 bg-[#121822] p-1.5 text-slate-300 hover:text-white">
               <Download className="h-4 w-4" />
             </button>
-            {chapterList && chapterList.length > 0 && (
-              <select
-                aria-label="Jump to chapter"
-                value={chapter.number}
-                onChange={(e) => navigate({ to: "/novel/$slug/chapter/$number", params: { slug, number: e.target.value } })}
-                className="max-w-[160px] rounded-lg border border-slate-800 bg-[#121822] px-2 py-1 text-xs text-slate-200"
-              >
-                {chapterList.map((c) => (
-                  <option key={c.number} value={c.number}>Ch. {c.number}: {c.title}</option>
-                ))}
-              </select>
+            {chapterListError ? <Button variant="outline" size="sm" onClick={() => void refetchChapterList()}>Retry chapter list</Button> : (
+              <ReaderChapterNavigation key={`${slug}:${chapter.number}`} chapters={chapterList} slug={slug} currentNumber={chapter.number} />
             )}
           </div>
         </div>

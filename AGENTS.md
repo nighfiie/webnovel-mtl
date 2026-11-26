@@ -41,3 +41,4 @@ use the editor.
 - CSV novel mapping generates deterministic slugs when exports omit them, preserving supplied IDs and slugs so retries remain deduplicated and chapter links survive migration.
 - Global and per-novel CSV imports share the delimiter-aware parser so old database exports and chapter-manager exports retain quoted multiline content consistently.
 - Chinese-original chapter imports split paragraphs by CJK ideograph density (pure helpers in src/lib/chapter-language.ts), not n-gram detection, so short MTL lines never abort imports.
+- Chapter navigation shares a metadata-only query and tested numeric range helpers; all complete chapter reads use range batching (smaller pages for admin full text) to avoid API row caps without bloating reader payloads.

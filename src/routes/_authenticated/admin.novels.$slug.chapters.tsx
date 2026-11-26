@@ -15,6 +15,7 @@ import { fetchChapterContent, type ScraperEngine } from "@/lib/scraper.functions
 import { ContentPlacementSelect } from "@/components/ContentPlacementSelect";
 import { placeChapterContent, type ContentPlacement } from "@/lib/chapter-language";
 import { crawlDelayBefore } from "@/lib/crawl-utils";
+import { collectChapterPages } from "@/lib/chapter-navigation";
 import { GENRE_PRESETS, type GenrePreset } from "@/lib/translation-prompts";
 import type { AiProvider } from "@/lib/ai-translate.functions";
 import {
@@ -98,14 +99,16 @@ function AdminChaptersPage() {
     queryKey: ["admin-chapters", novel?.id],
     enabled: Boolean(novel?.id),
     queryFn: async () => {
+      return collectChapterPages(async (from, to) => {
       const { data, error } = await supabase
         .from("chapters")
         .select("id, novel_id, number, title, content_translated, content_original, source_url, created_at, updated_at")
         .eq("novel_id", novel?.id ?? "")
         .order("number", { ascending: true })
-        .limit(1000);
+        .range(from, to);
       if (error) throw error;
       return (data ?? []) as ChapterRecord[];
+      }, 100);
     },
   });
 

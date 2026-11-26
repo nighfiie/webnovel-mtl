@@ -6,7 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { BookmarkButton } from "@/components/social/BookmarkButton";
 import { NovelRating } from "@/components/NovelRating";
 import { Reviews } from "@/components/social/Reviews";
-import type { ChapterRecord, NovelRecord } from "@/lib/novels";
+import type { NovelRecord } from "@/lib/novels";
+import { chapterListOptions } from "@/lib/chapter-list";
+import { NovelChapterList } from "@/components/ChapterNavigation";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/novel/$slug")({
   head: ({ params }) => ({
@@ -39,20 +42,7 @@ function NovelDetailPage() {
     },
   });
 
-  const { data: chapters = [], isLoading: chaptersLoading } = useQuery({
-    queryKey: ["novel-chapters-list", novel?.id],
-    enabled: Boolean(novel?.id),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("chapters")
-        .select("id, novel_id, number, title, content_translated, content_original, created_at, updated_at")
-        .eq("novel_id", novel?.id ?? "")
-        .order("number", { ascending: true })
-        .limit(1000);
-      if (error) throw error;
-      return (data ?? []) as ChapterRecord[];
-    },
-  });
+  const { data: chapters = [], isLoading: chaptersLoading, isError: chaptersError, refetch: refetchChapters } = useQuery(chapterListOptions(novel?.id ?? ""));
 
   if (novelLoading) {
     return (
@@ -188,28 +178,14 @@ function NovelDetailPage() {
 
         <section className="mt-10 border-t border-slate-800 pt-8">
           <h2 className="text-lg font-semibold text-white">Chapters</h2>
-          {chaptersLoading ? (
+          {chaptersError ? (
+            <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">Chapters could not be loaded.<Button variant="outline" size="sm" onClick={() => void refetchChapters()}>Retry</Button></div>
+          ) : chaptersLoading ? (
             <p className="mt-4 text-sm text-slate-400">Loading chapters...</p>
           ) : chapters.length === 0 ? (
             <p className="mt-4 text-sm text-slate-400">No chapters available yet.</p>
           ) : (
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {chapters.map((ch) => (
-                <Link
-                  key={ch.id}
-                  to="/novel/$slug/chapter/$number"
-                  params={{ slug: novel.slug, number: String(ch.number) }}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-800/80 bg-[#121822] px-4 py-3 text-sm transition-colors hover:border-blue-500/50 hover:bg-slate-900"
-                >
-                  <span className="truncate font-medium text-slate-200">
-                    Ch. {ch.number}: {ch.title}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-slate-400">
-                    {ch.content_translated && ch.content_original ? "Translated + Original" : ch.content_translated ? "Translated" : "Original"}
-                  </span>
-                </Link>
-              ))}
-            </div>
+            <NovelChapterList key={novel.id} chapters={chapters} slug={novel.slug} />
           )}
         </section>
         <Reviews novelId={novel.id} aggregate={novel} />
