@@ -249,3 +249,39 @@
 .catalog-shell .text-catalog-muted { color: hsl(var(--muted-foreground)); }
 .catalog-shell .text-catalog-primary { color: hsl(var(--primary)); }
 .catalog-shell .bg-primary { background-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+
+/* Admin tools use opaque roles independent of the imported HSL palettes. */
+@theme inline {
+  --color-admin-background: var(--admin-background);
+  --color-admin-surface: var(--admin-surface);
+  --color-admin-foreground: var(--admin-foreground);
+  --color-admin-muted: var(--admin-muted);
+  --color-admin-border: var(--admin-border);
+  --color-admin-primary: var(--admin-primary);
+  --color-admin-destructive: var(--admin-destructive);
+}
+:root {
+  --admin-background: oklch(0.173 0.018 264);
+  --admin-surface: oklch(0.21 0.023 264);
+  --admin-foreground: oklch(0.95 0.006 264);
+  --admin-muted: oklch(0.72 0.024 264);
+  --admin-border: oklch(0.36 0.031 264);
+  --admin-primary: oklch(0.76 0.1 250);
+  --admin-destructive: oklch(0.75 0.16 25);
+}
+.admin-tools-shell {
+  --ui-background: var(--admin-background);
+  --ui-foreground: var(--admin-foreground);
+  --ui-primary: var(--admin-primary);
+  --ui-primary-foreground: var(--admin-background);
+  --ui-secondary: var(--admin-surface);
+  --ui-secondary-foreground: var(--admin-foreground);
+  --ui-accent: var(--admin-surface);
+  --ui-accent-foreground: var(--admin-foreground);
+  --ui-muted: var(--admin-surface);
+  --ui-muted-foreground: var(--admin-muted);
+  --ui-input: var(--admin-border);
+  --ui-ring: var(--admin-primary);
+  --border: var(--admin-border);
+  letter-spacing: 0;
+}

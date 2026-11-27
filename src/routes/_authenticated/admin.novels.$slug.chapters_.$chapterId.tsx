@@ -12,6 +12,9 @@ import type { ChapterRecord, NovelRecord } from "@/lib/novels";
 import { ContentPlacementSelect } from "@/components/ContentPlacementSelect";
 import { placeChapterContent, type ContentPlacement } from "@/lib/chapter-language";
 import { fetchChapterContent, type ScraperEngine } from "@/lib/scraper.functions";
+import { useSelectorProfiles, SelectorProfiles } from "@/components/admin/SelectorProfiles";
+import { matchProfile } from "@/lib/scraper-profiles";
+import { stitchChapterPages } from "@/lib/chapter-stitching";
 import { translateChapterText, type TranslationEngine } from "@/lib/translator";
 
 export const Route = createFileRoute("/_authenticated/admin/novels/$slug/chapters_/$chapterId")({
@@ -41,6 +44,8 @@ function AdminEditChapterPage() {
   const [scraperEngine, setScraperEngine] = useState<ScraperEngine>("fallback");
   const [translateEngine, setTranslateEngine] = useState<TranslationEngine>("google");
   const [placement, setPlacement] = useState<ContentPlacement>("auto");
+  const profileSettings = useSelectorProfiles();
+  const [stitchPages, setStitchPages] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [translating, setTranslating] = useState(false);
 
@@ -104,9 +109,10 @@ function AdminEditChapterPage() {
     }
     setFetching(true);
     try {
-      const res = await fetchChapterContent({
-        data: { url: sourceUrl.trim(), engine: scraperEngine },
-      });
+      const res = await stitchChapterPages(sourceUrl.trim(), async url => {
+        const profile = matchProfile(url, profileSettings.profiles);
+        return fetchChapterContent({ data: { url, engine: scraperEngine, ...(profile ? { profile } : {}) } });
+      }, { enabled: stitchPages, delayMs: 2500 });
       const fields = placeChapterContent(res.content, placement, novel?.original_language, novel?.translated_language, novel?.language_mode);
       if (fields.content_original) setContentOriginal(fields.content_original);
       if (fields.content_translated) setContentTranslated(fields.content_translated);
@@ -136,7 +142,7 @@ function AdminEditChapterPage() {
       if (title.trim()) {
         try {
           const t = await translateChapterText({ text: title, engine: translateEngine });
-          if (t.trim()) setTitle(t.trim().split("\n")[0]!.trim());
+          if (t.trim()) setTitle(t.trim().split("\n")[0]?.trim() || title);
         } catch { /* keep original title */ }
       }
       toast.success(
@@ -224,6 +230,8 @@ function AdminEditChapterPage() {
           <div className="space-y-2">
             <Label className="text-xs uppercase tracking-wider text-slate-400">Single Chapter Fetch</Label>
             <ContentPlacementSelect value={placement} onChange={setPlacement} disabled={fetching} />
+            <div className="admin-tools-shell"><SelectorProfiles {...profileSettings} disabled={fetching}/></div>
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={stitchPages} disabled={fetching} onChange={e => setStitchPages(e.target.checked)}/>Merge continuation pages</label>
             <div className="flex flex-wrap gap-2">
               <Input
                 value={sourceUrl}

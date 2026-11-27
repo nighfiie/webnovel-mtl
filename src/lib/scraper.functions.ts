@@ -1,66 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { findNextChapterUrl, stripUnwantedLines } from "./crawl-utils";
+import { stripUnwantedLines } from "./crawl-utils";
+import { extractChapterPage, matchProfile, validateProfile, BUILTIN_PROFILES, type SelectorProfile } from "./scraper-profiles";
 
 export type ScraperEngine = "fallback" | "firecrawl";
-
-function stripHtmlToText(html: string): { title: string; content: string } {
-  const titleMatch =
-    html.match(/<[^>]*class=["'][^"']*\bchapter-title\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|h\d|div)>/i) ||
-    html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
-    html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const rawTitle = titleMatch?.[1]
-    ? titleMatch[1].replace(/<[^>]+>/g, "").trim()
-    : "Imported Chapter";
-
-  // Try common web novel content containers first
-  const containerPatterns = [
-    /<div[^>]*class=["'][^"']*\bchapter-body\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
-    /<div[^>]*class=["'][^"']*txtnav[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
-    /<div[^>]*id=["'](?:content|chaptercontent|BookText|txt)["'][^>]*>([\s\S]*?)<\/div>/i,
-    /<article[^>]*>([\s\S]*?)<\/article>/i,
-    /<main[^>]*>([\s\S]*?)<\/main>/i,
-  ];
-
-  let bodyHtml = html;
-  for (const pattern of containerPatterns) {
-    const match = html.match(pattern);
-    if (match?.[1] && match[1].length > 200) {
-      bodyHtml = match[1];
-      break;
-    }
-  }
-
-  const cleaned = bodyHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
-    .replace(/<header[\s\S]*?<\/header>/gi, "")
-    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/sentence>/gi, "\n\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<\/div>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&mdash;/gi, "—")
-    .replace(/^首页\s*>.*$/gm, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return { title: rawTitle, content: cleaned };
-}
 
 export const fetchChapterContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (input: { url: string; engine: ScraperEngine; firecrawlApiKey?: string; nextLinkText?: string; removePhrases?: string[] }) =>
+    (input: { url: string; engine: ScraperEngine; firecrawlApiKey?: string; nextLinkText?: string; removePhrases?: string[]; profile?: SelectorProfile }) =>
       input,
   )
   .handler(async ({ data, context }) => {
@@ -76,6 +24,9 @@ export const fetchChapterContent = createServerFn({ method: "POST" })
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       throw new Error("Please enter a valid http(s) URL");
     }
+
+    const profile = data.profile ? validateProfile(data.profile) : matchProfile(url, BUILTIN_PROFILES);
+    if (profile && !matchProfile(url, [profile])) throw new Error("Selector profile does not match this domain");
 
     if (data.engine === "firecrawl") {
       const apiKey =
@@ -121,13 +72,10 @@ export const fetchChapterContent = createServerFn({ method: "POST" })
       const json = (await res.json()) as {
         data?: { markdown?: string; rawHtml?: string; metadata?: { title?: string } };
       };
-      const content = stripUnwantedLines((json.data?.markdown ?? "").trim(), data.removePhrases ?? []);
-      const nextUrl = findNextChapterUrl(json.data?.rawHtml ?? "", url, data.nextLinkText);
-      const title = json.data?.metadata?.title?.trim() || "Imported Chapter";
-      if (!content) {
-        throw new Error("Firecrawl returned empty content for this URL");
-      }
-      return { title, content, nextUrl, engine: "firecrawl" as const };
+      const rawHtml = json.data?.rawHtml;
+      if (!rawHtml) throw new Error("Firecrawl did not return HTML for selector extraction. Try the built-in engine.");
+      const parsed = extractChapterPage(rawHtml, url, profile, data.nextLinkText);
+      return { ...parsed, content: stripUnwantedLines(parsed.content, data.removePhrases ?? []), engine: "firecrawl" as const };
     }
 
     // Built-in fallback crawler (no third-party service)
@@ -161,14 +109,15 @@ export const fetchChapterContent = createServerFn({ method: "POST" })
       }
     }
 
-    const parsed = stripHtmlToText(html);
+    const parsed = extractChapterPage(html, url, profile, data.nextLinkText);
     if (!parsed.content) {
       throw new Error("Could not extract readable text from this page");
     }
     return {
       title: parsed.title,
       content: stripUnwantedLines(parsed.content, data.removePhrases ?? []),
-      nextUrl: findNextChapterUrl(html, url, data.nextLinkText),
+      nextUrl: parsed.nextUrl,
+      nextPageUrl: parsed.nextPageUrl,
       engine: "fallback" as const,
     };
   });

@@ -16,6 +16,11 @@ import { fetchChapterContent, type ScraperEngine } from "@/lib/scraper.functions
 import { ContentPlacementSelect } from "@/components/ContentPlacementSelect";
 import { placeChapterContent, type ContentPlacement } from "@/lib/chapter-language";
 import { crawlDelayBefore } from "@/lib/crawl-utils";
+import { SelectorProfiles, useSelectorProfiles } from "@/components/admin/SelectorProfiles";
+import { JobActivity, JobLog } from "@/components/admin/JobActivity";
+import { matchProfile } from "@/lib/scraper-profiles";
+import { stitchChapterPages } from "@/lib/chapter-stitching";
+import { prependJobLog, type JobLogEntry } from "@/lib/job-log";
 import { collectChapterPages } from "@/lib/chapter-navigation";
 import { GENRE_PRESETS, type GenrePreset } from "@/lib/translation-prompts";
 import type { AiProvider } from "@/lib/ai-translate.functions";
@@ -77,6 +82,25 @@ function AdminChaptersPage() {
   const [importUrls, setImportUrls] = useState("");
   const [startChapterNum, setStartChapterNum] = useState("1");
   const [importing, setImporting] = useState(false);
+  const profileSettings = useSelectorProfiles();
+  const [stitchPages, setStitchPages] = useState(true);
+  const [importLogs, setImportLogs] = useState<JobLogEntry[]>([]);
+  const [translateLogs, setTranslateLogs] = useState<JobLogEntry[]>([]);
+  const logId = useRef(0);
+  const logImport = (message: string, status: JobLogEntry["status"] = "info") => { const entry = { id: ++logId.current, message, status }; setImportLogs(prev => prependJobLog(prev, entry)); };
+  const logTranslate = (message: string, status: JobLogEntry["status"] = "info") => { const entry = { id: ++logId.current, message, status }; setTranslateLogs(prev => prependJobLog(prev, entry)); };
+  const chapterLengths = (fields: { content_original?: string | null; content_translated?: string | null }) => [fields.content_original ? `Original: ${formatTextLength(fields.content_original)}` : "", fields.content_translated ? `Translated: ${formatTextLength(fields.content_translated)}` : ""].filter(Boolean).join(" · ") || "Empty";
+  const scrapeChapter = (url: string, crawl = false) => stitchChapterPages(url, async pageUrl => {
+    const profile = matchProfile(pageUrl, profileSettings.profiles);
+    return fetchChapterContent({ data: { url: pageUrl, engine: scraperEngine,
+      ...(profile ? { profile } : {}),
+      ...(firecrawlKey.trim() ? { firecrawlApiKey: firecrawlKey.trim() } : {}),
+      ...(crawl && crawlNextText.trim() ? { nextLinkText: crawlNextText.trim() } : {}),
+      removePhrases: crawlRemove.split(/\r?\n/).map(l => l.trim()).filter(Boolean),
+    } });
+  }, { enabled: stitchPages, stopped: () => crawlAbortRef.current, delayMs: Math.max(0, Number(crawlDelay) || 0) * 1000,
+    onPage: (pageUrl, page, number) => logImport(`Fetched page ${number}: ${page.title} · ${formatTextLength(page.content)} · ${pageUrl}`),
+  });
   const [importProgress, setImportProgress] = useState<string | null>(null);
 
   // Translation & LM Studio Settings
@@ -161,43 +185,44 @@ function AdminChaptersPage() {
       return;
     }
 
+    crawlAbortRef.current = false;
+    setImportLogs([]);
     setImporting(true);
     let currentNum = Number(startChapterNum) || 1;
     let successCount = 0;
 
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i];
+      if (crawlAbortRef.current) break;
       if (!url) continue;
       setImportProgress(`Fetching ${i + 1} / ${urls.length}...`);
       try {
-        const scraped = await fetchChapterContent({
-          data: {
-            url,
-            engine: scraperEngine,
-            ...(firecrawlKey.trim() ? { firecrawlApiKey: firecrawlKey.trim() } : {}),
-          },
-        });
+        logImport(`Importing Ch. ${currentNum} · ${url}`);
+        const scraped = await scrapeChapter(url);
+        const fields = placeChapterContent(scraped.content, placement, novel.original_language, novel.translated_language, novel.language_mode);
         const { error } = await supabase.from("chapters").upsert(
           {
             novel_id: novel.id,
             number: currentNum,
             title: scraped.title || `Chapter ${currentNum}`,
-            ...placeChapterContent(scraped.content, placement, novel.original_language, novel.translated_language, novel.language_mode),
+            ...fields,
             source_url: url,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "novel_id,number" },
         );
         if (error) throw error;
+        logImport(`Ch. ${currentNum}: ${scraped.title} · ${chapterLengths(fields)} · ${scraped.pageCount} page(s)`, "success");
         successCount++;
         currentNum++;
       } catch (err) {
+        logImport(`Ch. ${currentNum} · ${url}: ${err instanceof Error ? err.message : "Unknown error"}`, "error");
         toast.error(`Failed URL #${i + 1}: ${err instanceof Error ? err.message : "Unknown error"}`);
       }
     }
 
     setImporting(false);
-    setImportProgress(null);
+    setImportProgress(`${crawlAbortRef.current ? "Stopped" : "Finished"} · ${successCount} chapter(s) imported`);
     if (successCount > 0) {
       toast.success(`Imported ${successCount} chapter(s)`);
       queryClient.invalidateQueries({ queryKey: ["admin-chapters", novel.id] });
@@ -220,12 +245,14 @@ function AdminChaptersPage() {
     const removePhrases = crawlRemove.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const seen = new Set<string>();
     crawlAbortRef.current = false;
+    crawlAbortRef.current = false;
+    setImportLogs([]);
     setImporting(true);
     let num = Number(startChapterNum) || 1;
     let ok = 0;
     for (let i = 0; i < max && url; i++) {
       if (crawlAbortRef.current) break;
-      if (seen.has(url)) break;
+      if (seen.has(url)) { logImport(`Repeated chapter link: ${url}`, "error"); break; }
       seen.add(url);
       const wait = crawlDelayBefore(i, delayMs, pauseEvery, pauseMs);
       if (wait > 0) {
@@ -234,19 +261,13 @@ function AdminChaptersPage() {
         if (crawlAbortRef.current) break;
       }
       setImportProgress(`Crawling chapter ${i + 1} / ${max} (Ch. ${num})...`);
-      let scraped: Awaited<ReturnType<typeof fetchChapterContent>> | null = null;
+      let scraped: Awaited<ReturnType<typeof scrapeChapter>> | null = null;
       for (let attempt = 0; attempt < 2 && !scraped; attempt++) {
         try {
-          scraped = await fetchChapterContent({
-            data: {
-              url,
-              engine: scraperEngine,
-              ...(firecrawlKey.trim() ? { firecrawlApiKey: firecrawlKey.trim() } : {}),
-              ...(crawlNextText.trim() ? { nextLinkText: crawlNextText.trim() } : {}),
-              removePhrases,
-            },
-          });
+          logImport(`Crawling Ch. ${num} · ${url}`);
+          scraped = await scrapeChapter(url, true);
         } catch (err) {
+          logImport(`Ch. ${num} · ${attempt === 0 ? "Retry" : "Failed"}: ${err instanceof Error ? err.message : "Fetch error"}`, "error");
           if (attempt === 1) toast.error(`Stopped at ${url}: ${err instanceof Error ? err.message : "error"}`);
           else await new Promise((r) => setTimeout(r, Math.max(delayMs, 3000)));
         }
@@ -256,6 +277,7 @@ function AdminChaptersPage() {
       try {
         contentFields = placeChapterContent(scraped.content, placement, novel.original_language, novel.translated_language, novel.language_mode);
       } catch (err) {
+        logImport(`Ch. ${num}: ${err instanceof Error ? err.message : "Language detection failed"}`, "error");
         toast.error(err instanceof Error ? err.message : "Language detection failed");
         break;
       }
@@ -271,16 +293,18 @@ function AdminChaptersPage() {
         { onConflict: "novel_id,number" },
       );
       if (error) {
+        logImport(`Ch. ${num}: ${error.message}`, "error");
         toast.error(error.message);
         break;
       }
+      logImport(`Ch. ${num}: ${scraped.title} · ${chapterLengths(contentFields)} · ${scraped.pageCount} page(s)`, "success");
       ok++;
       num++;
       url = scraped.nextUrl;
       if (!url) toast.info("No next-chapter link found — crawl finished.");
     }
     setImporting(false);
-    setImportProgress(null);
+    setImportProgress(`${crawlAbortRef.current ? "Stopped" : "Finished"} · ${ok} chapter(s) imported`);
     if (ok > 0) {
       toast.success(`Crawled ${ok} chapter(s)`);
       setStartChapterNum(String(num));
@@ -290,6 +314,8 @@ function AdminChaptersPage() {
 
   const handleCsvUpload = async (file: File) => {
     if (!novel) return;
+    crawlAbortRef.current = false;
+    setImportLogs([]);
     setImporting(true);
     setImportProgress("Parsing CSV...");
     try {
@@ -300,6 +326,7 @@ function AdminChaptersPage() {
       const batchSize = 50;
       let imported = 0;
       for (let i = 0; i < rows.length; i += batchSize) {
+        if (crawlAbortRef.current) break;
         setImportProgress(`Uploading chapters ${i + 1}–${Math.min(i + batchSize, rows.length)} of ${rows.length}...`);
         const batch = rows.slice(i, i + batchSize).map((r) => ({
           novel_id: novel.id,
@@ -311,16 +338,19 @@ function AdminChaptersPage() {
         }));
         const { error } = await supabase.from("chapters").upsert(batch, { onConflict: "novel_id,number" });
         if (error) throw error;
+        for (const ch of batch) logImport(`Ch. ${ch.number}: ${ch.title} · ${chapterLengths(ch)}`, "success");
         imported += batch.length;
+        setImportProgress(`${imported} / ${rows.length} chapters saved`);
       }
       toast.success(`Imported ${imported} chapters from CSV`);
       queryClient.invalidateQueries({ queryKey: ["admin-chapters", novel.id] });
       setImportOpen(false);
     } catch (err) {
+      logImport(err instanceof Error ? err.message : "CSV import failed", "error");
       toast.error(err instanceof Error ? err.message : "CSV import failed");
     } finally {
       setImporting(false);
-      setImportProgress(null);
+      logImport(crawlAbortRef.current ? "CSV import stopped" : "CSV import finished");
     }
   };
 
@@ -330,13 +360,16 @@ function AdminChaptersPage() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    setTranslateLogs([]);
     setBulkTranslating(true);
     let done = 0;
 
     for (let i = 0; i < targets.length; i++) {
       if (controller.signal.aborted) break;
       const ch = targets[i];
-      if (!ch?.content_original?.trim()) continue;
+      if (!ch) continue;
+      if (!ch.content_original?.trim()) { logTranslate(`Ch. ${ch.number}: skipped, no original text · 0 characters`); continue; }
+      logTranslate(`Translating Ch. ${ch.number}: ${ch.title} · ${formatTextLength(ch.content_original)}`);
       const originalText = ch.content_original;
       setTranslateProgress(`Translating Ch. ${ch.number} (${i + 1} / ${targets.length})...`);
       try {
@@ -353,6 +386,7 @@ function AdminChaptersPage() {
           translated = await run();
         } catch {
           if (controller.signal.aborted) break;
+          logTranslate(`Retrying Ch. ${ch.number} · ${formatTextLength(originalText)}`, "error");
           setTranslateProgress(`Retrying Ch. ${ch.number}...`);
           await new Promise((r) => setTimeout(r, 3000));
           translated = await run();
@@ -361,24 +395,28 @@ function AdminChaptersPage() {
         if (ch.title?.trim()) {
           try {
             const t = await translateChapterText({ text: ch.title, engine: translateEngine, localLlmConfig: llmConfig, aiSettings, signal: controller.signal });
-            if (t.trim()) newTitle = t.trim().split("\n")[0]!.trim();
-          } catch { /* keep original title */ }
+            if (t.trim()) newTitle = t.trim().split("\n")[0]?.trim() || ch.title;
+          } catch { logTranslate(`Ch. ${ch.number}: title translation failed; original title kept`, "error"); }
         }
+        if (controller.signal.aborted) break;
         const { error } = await supabase
           .from("chapters")
           .update({ title: newTitle, content_translated: translated, updated_at: new Date().toISOString() })
           .eq("id", ch.id);
         if (error) throw error;
+        logTranslate(`Ch. ${ch.number}: ${newTitle} · Original: ${formatTextLength(originalText)} · Translated: ${formatTextLength(translated)}`, "success");
         done++;
       } catch (err) {
         if (controller.signal.aborted) break;
+        logTranslate(`Ch. ${ch.number} · ${formatTextLength(originalText)}: ${err instanceof Error ? err.message : "Translation error"}`, "error");
         toast.error(`Ch. ${ch.number} failed: ${err instanceof Error ? err.message : "Translation error"}`);
         break;
       }
     }
 
     setBulkTranslating(false);
-    setTranslateProgress(null);
+    setTranslateProgress(`${controller.signal.aborted ? "Stopped" : "Finished"} · ${done} / ${targets.length} translated`);
+    logTranslate(`${controller.signal.aborted ? "Stopped" : "Finished"} · ${done} / ${targets.length} translated`);
     abortRef.current = null;
     if (done > 0) {
       toast.success(`Translated ${done} chapter(s)`);
@@ -413,7 +451,7 @@ function AdminChaptersPage() {
             <span className="text-slate-600">/</span>
             <span className="text-sm font-medium text-white truncate max-w-xs">{novel?.title ?? slug}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setLlmOpen(true)} className="border-slate-700 gap-1.5 text-xs">
               <Settings2 className="h-3.5 w-3.5" /> LM Studio Settings
             </Button>
@@ -427,7 +465,7 @@ function AdminChaptersPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 space-y-4">
+      <main className="mx-auto max-w-6xl px-4 pt-6 pb-80 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -487,7 +525,7 @@ function AdminChaptersPage() {
 
               {bulkTranslating ? (
                 <Button size="sm" variant="destructive" onClick={() => abortRef.current?.abort()} className="h-7 gap-1 text-xs">
-                  <Square className="h-3 w-3" /> Stop ({translateProgress})
+                  <Square className="h-3 w-3" /> Stop
                 </Button>
               ) : (
                 <Button size="sm" onClick={handleBulkTranslate} className="h-7 bg-emerald-600 hover:bg-emerald-500 text-white gap-1 text-xs">
@@ -602,6 +640,11 @@ function AdminChaptersPage() {
         </div>
       </main>
 
+      <div className="admin-tools-shell fixed bottom-3 right-3 z-40 flex max-h-[70vh] w-[calc(100%-1.5rem)] max-w-sm flex-col gap-2 overflow-y-auto">
+        {!importOpen && (importing || importLogs.length > 0) && <JobActivity title="Chapter import" active={importing} progress={importProgress} entries={importLogs} onStop={() => { crawlAbortRef.current = true; }} onDismiss={() => setImportLogs([])} />}
+        {(bulkTranslating || translateLogs.length > 0) && <JobActivity title="Bulk translation" active={bulkTranslating} progress={translateProgress} entries={translateLogs} onStop={() => abortRef.current?.abort()} onDismiss={() => setTranslateLogs([])} />}
+      </div>
+
       {/* Add Chapter Modal */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="bg-[#121822] border-slate-800 text-slate-100">
@@ -644,7 +687,7 @@ function AdminChaptersPage() {
 
       {/* Chapter Importer Modal */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="max-w-xl bg-[#121822] border-slate-800 text-slate-100">
+        <DialogContent className="admin-tools-shell max-h-[90vh] overflow-y-auto max-w-xl bg-admin-surface border-admin-border text-admin-foreground">
           <DialogHeader><DialogTitle>Chapter Importer</DialogTitle></DialogHeader>
           <div className="flex gap-2 border-b border-slate-800 pb-3 text-xs">
             <button
@@ -672,6 +715,10 @@ function AdminChaptersPage() {
 
           {importTab !== "csv" && <ContentPlacementSelect value={placement} onChange={setPlacement} disabled={importing} />}
 
+          {importTab !== "csv" && <>
+            <SelectorProfiles {...profileSettings} disabled={importing}/>
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={stitchPages} disabled={importing} onChange={e => setStitchPages(e.target.checked)}/>Merge continuation pages</label>
+          </>}
           {importTab === "crawl" ? (
             <div className="space-y-3">
               <p className="text-xs text-slate-400">
@@ -794,6 +841,8 @@ function AdminChaptersPage() {
               {importProgress && <p className="text-xs text-blue-300">{importProgress}</p>}
             </div>
           )}
+          <JobLog entries={importLogs}/>
+          {importing && <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { crawlAbortRef.current = true; }}>Stop</Button><Button variant="outline" onClick={() => setImportOpen(false)}>Minimize</Button></div>}
         </DialogContent>
       </Dialog>
 

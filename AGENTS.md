@@ -42,3 +42,6 @@ use the editor.
 - Global and per-novel CSV imports share the delimiter-aware parser so old database exports and chapter-manager exports retain quoted multiline content consistently.
 - Chinese-original chapter imports split paragraphs by CJK ideograph density (pure helpers in src/lib/chapter-language.ts), not n-gram detection, so short MTL lines never abort imports.
 - Chapter navigation shares a metadata-only query and tested numeric range helpers; all complete chapter reads use range batching (smaller pages for admin full text) to avoid API row caps without bloating reader payloads.
+- Domain selector profiles are browser-persisted and validated by the scraper; HTML extraction uses a shared pure CSS-selector parser so fallback and Firecrawl follow identical rules.
+- Continuation stitching runs client-side with one server request per page and explicit next-page selectors, same-origin/loop/page guards; never infer continuation from a next-chapter link.
+- Import and translation activity uses shared newest-first logs and floating panels; logs survive completion until dismissed so failed chapter lengths remain inspectable.
