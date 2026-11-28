@@ -16,6 +16,11 @@ describe("Domain selector extraction", () => {
     const result = extractChapterPage('<div>Comments 16 Report English Chinese</div><span class="chapter-title">One</span><div class="chapter-body"><sentence>沈天很郁闷。</sentence><sentence>Shen Tian is very depressed.</sentence></div>', "https://lnmtl.com/chapter/one", BUILTIN_PROFILES[0]);
     expect(result.content).toBe("沈天很郁闷。\n\nShen Tian is very depressed.");
   });
+  it("uses LNMTL's next navigation link, not comment pagination", () => {
+    const result = extractChapterPage('<span class="chapter-title">One</span><div class="chapter-body"><p>Story</p></div><ul><li class="next"><a href="/chapter/two">Next</a></li></ul>', "https://lnmtl.com/chapter/one", BUILTIN_PROFILES[0]);
+    expect(result.nextUrl).toBe("https://lnmtl.com/chapter/two");
+    expect(result.nextPageUrl).toBeNull();
+  });
   it("matches actual domain boundaries", () => {
     expect(matchProfile("https://www.example.com/1", [profile])).toEqual(profile);
     expect(matchProfile("https://notexample.com/1", [profile])).toBeUndefined();

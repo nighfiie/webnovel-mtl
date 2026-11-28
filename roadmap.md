@@ -9,6 +9,6 @@
 - [x] Phase 1: Live catalog on Home/Browse, reader typography modal (fonts, line height, saved settings), progress saving
 - [x] Phase 2: Profiles, bookmarks/library, ratings & reviews, chapter comments
 - [x] Connect Home, Browse, Rankings, Updates, and Categories to the live catalog; verify search, filters, and chapter links.
-- [ ] Add domain selector profiles shared by chapter imports and editor fetching.
-- [ ] Stitch chapter continuation pages without following next-chapter links.
-- [ ] Add floating import/translation progress and newest-first chapter length logs.
+- [x] Add domain selector profiles shared by chapter imports and editor fetching; browser persistence and LNMTL extraction verified.
+- [x] Stitch chapter continuation pages without following next-chapter links; verified a two-page chapter followed by a separate next chapter through an admin crawl.
+- [x] Add floating import/translation progress and newest-first chapter length logs; real CSV imports, AI translation save/readback, rate-limit logging, and mobile layout verified with a temporary test admin.
